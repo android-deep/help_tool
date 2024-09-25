@@ -1,14 +1,15 @@
 import ctypes
 import re
+import subprocess
 from ctypes import wintypes
-
 import keyboard
 import psutil
-from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QComboBox, QStackedWidget, \
-    QGridLayout, QButtonGroup, QGroupBox, QRadioButton, QTextEdit, QProgressBar, QAction, QApplication
+    QGridLayout, QButtonGroup, QGroupBox, QRadioButton, QTextEdit, QProgressBar, QAction, QMessageBox, \
+    QFileDialog
 import CustomTextEdit
+import Realphone_Thead
 import WorkerThread
 import Part_Thread
 from ShortcutDialog import ShortcutDialog
@@ -41,10 +42,12 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         # 设置窗口标题和大小
+        self.Realphone_worker = None
+        self.tt = None
         self.HOTKEY_ID = 885
         self.shortcut_key = 'Ctrl+Shift+G'
         self.setWindowTitle("推理助手")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(500, 200, 1000, 750)
         self.pid = None
         self.file_path = None
         self.hash_name = None
@@ -57,12 +60,14 @@ class MainWindow(QMainWindow):
         self.hbox_layout_top = QHBoxLayout()
         # 创建横向布局
         self.hbox_layout = QHBoxLayout()
+        self.hbox_layout_find = QHBoxLayout()
 
         self.textbox = QLineEdit(self)
         # 设置输入验证器为浮点数验证器（可以改为 QIntValidator 以限制为整数）
         int_validator = QIntValidator()
         self.textbox.setValidator(int_validator)
         self.textbox.setPlaceholderText("请输入进程ID")  # 设置占位符文本
+
         # 创建下拉框
         self.comboBox = QComboBox(self)
 
@@ -75,15 +80,15 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.textbox)
 
         # 创建按钮来触发文件选择对话框
-        # self.button = QPushButton("选择模型文件", self)
+        self.button = QPushButton("选择模型文件", self)
         self.button2 = QPushButton(f"加载模型({self.shortcut_key})", self)
 
-        # self.button.clicked.connect(self.open_file_dialog)
+        self.button.clicked.connect(self.open_file_dialog)
         self.button2.clicked.connect(self.loadfile)
 
         self.hbox_layout.addWidget(self.stacked_widget)
         self.hbox_layout.addWidget(self.button2)
-        # self.hbox_layout.addWidget(self.button)
+        self.hbox_layout.addWidget(self.button)
 
         self.QRadioButton_layout = QGridLayout()
         self.QRadioButton_layout2 = QGridLayout()
@@ -94,6 +99,7 @@ class MainWindow(QMainWindow):
         self.button_group = QButtonGroup(self)
         self.button_group2 = QButtonGroup(self)
         self.button_group3 = QButtonGroup(self)
+        self.button_group4 = QButtonGroup(self)
         self.groupBox = QGroupBox(self)
         self.groupBox.setTitle("哈希算法系列")
         self.groupBox2 = QGroupBox(self)
@@ -101,7 +107,6 @@ class MainWindow(QMainWindow):
 
         self.groupBox3 = QGroupBox(self)
         self.groupBox3.setTitle("猜测可能的明文格式")
-
         self.radio_button1 = QRadioButton("MD5", self)
         self.radio_button2 = QRadioButton("SHA1", self)
         self.radio_button3 = QRadioButton("SHA256", self)
@@ -112,7 +117,6 @@ class MainWindow(QMainWindow):
         self.radio_button8 = QRadioButton("DES", self)
         self.radio_button9 = QRadioButton("3DES", self)
 
-
         self.radio_button10 = QRadioButton("普通格式", self)
         self.radio_button11 = QRadioButton("json格式", self)
 
@@ -121,17 +125,21 @@ class MainWindow(QMainWindow):
 
         self.radio_button14 = QRadioButton("SM3", self)
         self.radio_button15 = QRadioButton("LD安卓模拟器", self)
-        self.radio_button16 = QRadioButton("小程序", self)
+        self.radio_button16 = QRadioButton("真机", self)
 
         self.radio_button17 = QRadioButton("rsa证书导出", self)
         self.radio_button18 = QRadioButton("明文搜索", self)
         self.radio_button19 = QRadioButton("SM4", self)
-
+        self.radio_button20 = QRadioButton("全部算法(不含HMAC)", self)
+        self.radio_button21 = QRadioButton("普通模式", self)
+        self.radio_button22 = QRadioButton("深入模式", self)
+        self.radio_button23 = QRadioButton("选择本地模型", self)
 
         self.radio_button12.toggled.connect(self.on_radio_button_toggled)
         self.radio_button13.toggled.connect(self.on_radio_button_toggled)
         self.radio_button15.toggled.connect(self.on_radio_button_toggled)
         self.radio_button16.toggled.connect(self.on_radio_button_toggled)
+        self.radio_button23.toggled.connect(self.on_radio_button_toggled)
 
         self.QRadioButton_layout.addWidget(self.radio_button1, 0, 0)
         self.QRadioButton_layout.addWidget(self.radio_button2, 0, 1)
@@ -146,6 +154,7 @@ class MainWindow(QMainWindow):
         self.QRadioButton_layout2.addWidget(self.radio_button17, 0, 3)
         self.QRadioButton_layout2.addWidget(self.radio_button18)
         self.QRadioButton_layout2.addWidget(self.radio_button19)
+        self.QRadioButton_layout2.addWidget(self.radio_button20)
 
         self.QRadioButton_layout3.addWidget(self.radio_button10, 0, 0)
         self.QRadioButton_layout3.addWidget(self.radio_button11, 0, 1)
@@ -154,6 +163,7 @@ class MainWindow(QMainWindow):
 
         self.QRadioButton_layout4.addWidget(self.radio_button15, 0, 2)
         self.QRadioButton_layout4.addWidget(self.radio_button16)
+        self.QRadioButton_layout4.addWidget(self.radio_button23)
 
         self.button_group.addButton(self.radio_button1)
         self.button_group.addButton(self.radio_button2)
@@ -167,6 +177,7 @@ class MainWindow(QMainWindow):
         self.button_group.addButton(self.radio_button17)
         self.button_group.addButton(self.radio_button18)
         self.button_group.addButton(self.radio_button19)
+        self.button_group.addButton(self.radio_button20)
         self.button_group.addButton(self.radio_button14)
 
         self.radio_button4.toggled.connect(self.on_radio_button_toggled_suanfa)
@@ -175,6 +186,7 @@ class MainWindow(QMainWindow):
         self.radio_button17.toggled.connect(self.on_radio_button_toggled_suanfa)
         self.radio_button18.toggled.connect(self.on_radio_button_toggled_suanfa)
         self.radio_button19.toggled.connect(self.on_radio_button_toggled_suanfa)
+        self.radio_button20.toggled.connect(self.on_radio_button_toggled_suanfa)
 
         self.radio_button1.toggled.connect(self.on_radio_button_toggled_suanfa)
         self.radio_button2.toggled.connect(self.on_radio_button_toggled_suanfa)
@@ -190,6 +202,7 @@ class MainWindow(QMainWindow):
         self.button_group3.addButton(self.radio_button13)
         self.button_group3.addButton(self.radio_button15)
         self.button_group3.addButton(self.radio_button16)
+        self.button_group3.addButton(self.radio_button23)
 
         self.text_knowedit = QTextEdit(self)
         self.text_knowedit.setPlaceholderText("在这里输入你知道的部分明文...")  # 设置占位符文本
@@ -201,8 +214,18 @@ class MainWindow(QMainWindow):
         self.text_messageedit.setStyleSheet("background-color: black; color: white;")
         self.text_messageedit.setReadOnly(True)  # 设置为只读
 
+        self.button_group4.addButton(self.radio_button21)
+        self.button_group4.addButton(self.radio_button22)
         # 创建开始按钮
         self.task_button = QPushButton("开始推理", self)
+
+        self.hbox_layout_find.addWidget(self.radio_button21)
+        self.radio_button21.setChecked(True)
+        self.hbox_layout_find.addWidget(self.radio_button22)
+        self.hbox_layout_find.addWidget(self.task_button)
+        self.hbox_layout_find.setStretch(0, 1)
+        self.hbox_layout_find.setStretch(1, 1)
+        self.hbox_layout_find.setStretch(2, 3)
         self.task_button.clicked.connect(self.start_worker)
 
         self.progress_bar = QProgressBar(self)
@@ -226,7 +249,7 @@ class MainWindow(QMainWindow):
         self.groupBox3.setLayout(self.QRadioButton_layout3)
         self.vbox_layout.addWidget(self.text_unknowedit)
 
-        self.vbox_layout.addWidget(self.task_button)
+        self.vbox_layout.addLayout(self.hbox_layout_find)
         self.vbox_layout.addWidget(self.progress_bar)
         self.radio_button10.setChecked(True)
         self.radio_button13.setChecked(True)
@@ -248,13 +271,26 @@ class MainWindow(QMainWindow):
 
         self.button2.click()
 
-
     def closeEvent(self, event):
         keyboard.unhook_all()
 
     def start_worker(self):
+        if self.button_group4.checkedButton().text() == "普通模式":
+            is_deep = 0
+        else:
+            is_deep = 1
 
-        if not self.file_path:
+
+
+        if self.task_button.text() == "停止推理":
+            if self.worker:
+                self.worker.stop()
+                self.worker.terminate()
+            self.progress_bar.hide()
+            self.task_button.setText('开始推理')
+            return
+
+        if not self.file_path or  not  isinstance(self.file_path ,dict):
             self.statusBar().showMessage("模型为空请加载模型", 5000)
             return
 
@@ -274,41 +310,48 @@ class MainWindow(QMainWindow):
 
         if selected_button:
             self.hash_name = selected_button.text()
-            print("选中的按钮文本:", selected_button.text())  # 打印选中按钮的文本
         else:
             self.statusBar().showMessage("没有选中的按钮", 5000)
             return
 
         if self.task_button.text() == "开始推理":
             self.task_button.setText('停止推理')
+
+        if self.hash_name == "全部算法(不含HMAC)":
+            self.task_button.setEnabled(False)
+            self.worker = WorkerThread.WorkerAllThread(self.file_path, self.hash_name, self.text_knowedit.toPlainText(),
+                                                       self.text_unknowedit.toPlainText(),
+                                                       self.button_group2.checkedButton().text(), 1, is_deep)
+            self.worker.message_changed.connect(self.append_message)
+            self.worker.message_end.connect(self.worker_end)
+            self.worker.message_log.connect(self.worker_log)
+            self.worker.message_totle.connect(self.worker_totle)
+            self.progress_bar.show()
+            self.worker.start()
+
+
         else:
-            if self.worker:
-                print(f"是运行:{self.worker.isRunning()}")
+            self.task_button.setEnabled(False)
+            self.worker = WorkerThread.WorkerAllThread(self.file_path, self.hash_name, self.text_knowedit.toPlainText(),
+                                                       self.text_unknowedit.toPlainText(),
+                                                       self.button_group2.checkedButton().text(), 0, is_deep)
 
-                self.worker.terminate()
+            self.worker.message_changed.connect(self.append_message)
+            self.worker.message_end.connect(self.worker_end)
+            self.worker.message_log.connect(self.worker_log)
+            self.worker.message_totle.connect(self.worker_totle)
+            self.progress_bar.show()
+            self.worker.start()
 
-                print(f"是运行:{self.worker.isRunning()}")
-            self.progress_bar.hide()
-            self.task_button.setText('开始推理')
-
+    def worker_end(self, is_first):
+        if is_first == 1:
+            self.task_button.setEnabled(True)
             return
 
-        self.worker = WorkerThread.WorkerThread(self.file_path, self.hash_name, self.text_knowedit.toPlainText(),
-                                                self.text_unknowedit.toPlainText(),
-                                                self.button_group2.checkedButton().text())
-        print((self.hash_name, self.text_knowedit.toPlainText(),
-               self.text_unknowedit.toPlainText(), self.button_group2.checkedButton().text()))
+        if is_first == 2:
+            self.task_button.setEnabled(False)
+            return
 
-        self.worker.message_changed.connect(self.append_message)
-        self.worker.message_end.connect(self.worker_end)
-        self.worker.message_log.connect(self.worker_log)
-        self.worker.message_totle.connect(self.worker_totle)
-
-        self.progress_bar.show()
-
-        self.worker.start()
-
-    def worker_end(self):
         self.task_button.setEnabled(True)
         self.progress_bar.hide()
         self.progress_bar.setValue(self.progress_bar.maximum())
@@ -320,7 +363,9 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
 
     def worker_log(self, value):
-        self.progress_bar.setValue(value)
+
+        self.progress_bar.setValue(value[0])
+        self.progress_bar.setMaximum(value[1])
 
     def append_message(self, message):
         self.text_messageedit.append(message)
@@ -369,6 +414,7 @@ class MainWindow(QMainWindow):
 
     def on_combobox_changed(self, index):
         # 获取当前选中的进程 PID
+
         self.pid = self.comboBox.itemData(index)
 
     def update_process_list(self):
@@ -393,22 +439,56 @@ class MainWindow(QMainWindow):
         for process_name, pid in processes:
             self.comboBox.addItem(f"{process_name} (PID: {pid})", pid)
 
+    def update_phone_list(self):
+        # 获取所有进程的 PID 和名称
+        processes = []
+        pattern = r'\s+(\d+)\s+(\d+)\s+'
+        try:
+            # 清空下拉框中的所有现有条目
+            self.comboBox.clear()
+            for pid in self.get_command_result('ps -A |grep u0_').splitlines():
+                a = re.findall(pattern, pid)[0]
+                processes.append((pid.split(' ')[-1], a[0], a[1]))
+            processes = sorted(processes, key=lambda x: x[0].lower())
+            for process_name in processes:
+                self.comboBox.addItem(f"{process_name[0]}(PID:{process_name[1]} PPID:{process_name[2]})",
+                                      process_name[1])
+
+        except subprocess.CalledProcessError as e:
+            self.open_Message(e.stderr)
+        # except Exception as e:
+        #     self.open_Message(e)
+
     def on_radio_button_toggled(self):
+
         if not self.sender().isChecked():
             return
+
         if self.button_group3.checkedButton().text() == "自定义进程":
+            self.button.hide()
             self.stacked_widget.show()
             self.update_process_list()
             self.stacked_widget.setCurrentIndex(0)
 
-        if self.button_group3.checkedButton().text() == "自定义进程id":
+        elif self.button_group3.checkedButton().text() == "选择本地模型":
+            self.textbox.setPlaceholderText('请选择模型文件')
+            self.button.show()
             self.stacked_widget.show()
             self.pid = None
             self.stacked_widget.setCurrentIndex(1)
 
-        if self.button_group3.checkedButton().text() == "LD安卓模拟器":
+        elif self.button_group3.checkedButton().text() == "自定义进程id":
+            self.textbox.setPlaceholderText('请输入进程ID')
+            self.button.hide()
+            self.stacked_widget.show()
+            self.pid = None
+            self.stacked_widget.setCurrentIndex(1)
+
+        elif self.button_group3.checkedButton().text() == "LD安卓模拟器":
+            self.button.hide()
             self.stacked_widget.hide()
             pl = psutil.pids()
+            self.pid = None
             for pid in pl:
                 try:
                     if 'BoxHeadless' in psutil.Process(pid).name():
@@ -416,12 +496,51 @@ class MainWindow(QMainWindow):
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     pass
 
+        elif self.button_group3.checkedButton().text() == "真机":
+            self.button.hide()
+            self.update_phone_list()
+            self.stacked_widget.show()
+            self.pid = None
+            self.stacked_widget.setCurrentIndex(0)
+
+
+
+        else:
+            self.pid = None
+
         self.textbox.setText('')
         self.file_path = ''
+
+    def open_Message(self, ee_ss):
+        # 创建提示窗
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)  # 设置图标
+        msg_box.setText(f"{ee_ss}")  # 提示信息
+        msg_box.setWindowTitle("提示")  # 窗口标题
+        msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)  # 按钮
+        response = msg_box.exec_()  # 显示提示窗并等待响应
+
+        # 根据用户的选择进行处理
+        if response == QMessageBox.Ok:
+            pass
+        else:
+            pass
+
+    def get_command_result(self, command):
+
+        result = subprocess.run(f'platform-tools\\adb shell su -c "{command}"', shell=True, check=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return result.stdout
 
     def on_radio_button_toggled_suanfa(self):
         if not self.sender().isChecked():
             return
+        if self.button_group.checkedButton().text() == "AES" or self.button_group.checkedButton().text() == "DES" or self.button_group.checkedButton().text() == "3DES" or self.button_group.checkedButton().text() == "SM4":
+            self.radio_button21.show()
+            self.radio_button22.show()
+        else:
+            self.radio_button21.hide()
+            self.radio_button22.hide()
         if self.button_group.checkedButton().text() == "HMACMD5" or self.button_group.checkedButton().text() == "HMACSHA1" or self.button_group.checkedButton().text() == "HMACSHA256":
             self.text_knowedit.setPlaceholderText("在这里输入你知道的部分明文...(不填很慢)")  # 设置占位符文本
             return
@@ -471,21 +590,37 @@ class MainWindow(QMainWindow):
 
         # 读取内存
 
+    def open_file_dialog(self):
+        if self.button_group3.checkedButton().text() == '选择本地模型':
+            # 打开文件选择对话框
+            options = QFileDialog.Options()
+            options |= QFileDialog.ReadOnly
+            self.file_path, _ = QFileDialog.getOpenFileName(self, "选择文件", "", "所有文件 (*);;文本文件 (*.txt)",
+                                                            options=options)
+            if self.file_path:
+                # 在标签中显示选定的文件路径
+                self.pid = self.file_path
+                self.textbox.setText(f"选定的模型路径: {self.file_path}")
+                self.statusBar().showMessage(f"选定的模型路径: {self.file_path}", 5000)
+            else:
+                self.pid = None
+                self.textbox.setText('')
+
     def loadfile(self):
-        if self.button2.text() == f"加载模型({self.shortcut_key})":
-            self.button2.setText(f'停止加载模型({self.shortcut_key})')
-        else:
-            if self.Part_worker:
-                print(f"是运行:{self.Part_worker.isRunning()}")
 
-                self.Part_worker.terminate()
-                self.resume_process(self.pid)
+        if self.button_group3.checkedButton().text() == "真机":
+            if self.comboBox.currentData():
+                self.task_button.setEnabled(False)
+                self.button2.setEnabled(False)
+                self.Realphone_worker = Realphone_Thead.Realphone_Thead(self.comboBox.currentData())
+                self.Realphone_worker.Part_changed.connect(self.append_message)
+                self.Realphone_worker.Part_end.connect(self.Realphone_end)
+                self.Realphone_worker.Part_log.connect(self.Realphone_log)
+                self.Realphone_worker.Part_totle.connect(self.Realphone_totle)
+                self.Realphone_worker.start()
+                self.progress_bar.show()
+                return
 
-                print(f"是运行:{self.Part_worker.isRunning()}")
-            self.progress_bar.hide()
-            self.button2.setText(f'加载模型({self.shortcut_key})')
-
-            return
 
         pid = self.pid
 
@@ -496,10 +631,18 @@ class MainWindow(QMainWindow):
                 pid = int(self.textbox.text())
 
         if not pid:
-            self.statusBar().showMessage(f"没有找到进程", 5000)
+            if  self.button_group3.checkedButton().text() == "选择本地模型":
+                self.statusBar().showMessage(f"没有找到模型", 5000)
+            else:
+                self.statusBar().showMessage(f"没有找到进程", 5000)
             return
 
-        self.Part_worker = Part_Thread.Part_Thread(pid)
+        if self.button2.text() == f"加载模型({self.shortcut_key})":
+            self.task_button.setEnabled(False)
+            self.button2.setEnabled(False)
+
+        self.Part_worker = Part_Thread.Part_Thread(
+            str(pid) if self.button_group3.checkedButton().text() == '选择本地模型' else int(pid))
         self.Part_worker.Part_changed.connect(self.append_message)
         self.Part_worker.Part_end.connect(self.Part_end)
         self.Part_worker.Part_log.connect(self.Part_log)
@@ -513,16 +656,41 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self.progress_bar.maximum())
         self.progress_bar.setValue(0)
         self.button2.setText(f'加载模型({self.shortcut_key})')
+        self.task_button.setEnabled(True)
         if value:
             self.file_path = value
-            self.text_messageedit.append(f"成功！模型加载成功")
-            self.statusBar().showMessage("模型加载成功", 5000)
+            self.text_messageedit.append(f"成功！加载成功")
+            self.statusBar().showMessage("加载成功", 5000)
         else:
-            self.statusBar().showMessage("模型加载失败", 5000)
+
+            self.statusBar().showMessage("失败！加载失败", 5000)
 
     def Part_log(self, value):
         self.progress_bar.setValue(value)
 
     def Part_totle(self, value):
+        self.progress_bar.setMaximum(value)
+        self.progress_bar.setValue(0)
+
+    def Realphone_end(self, value):
+        self.button2.setEnabled(True)
+        self.progress_bar.hide()
+        self.progress_bar.setValue(self.progress_bar.maximum())
+        self.progress_bar.setValue(0)
+        self.button2.setText(f'加载模型({self.shortcut_key})')
+        self.task_button.setEnabled(True)
+        if not value.get('erro'):
+            self.file_path = value
+            self.text_messageedit.append(f"成功！模型加载成功")
+            self.statusBar().showMessage("模型加载成功", 5000)
+        else:
+            self.text_messageedit.append(f"失败！模型加载失败")
+            self.text_messageedit.append(f"{value.get('erro')}")
+            self.statusBar().showMessage("模型加载失败", 5000)
+
+    def Realphone_log(self, value):
+        self.progress_bar.setValue(value)
+
+    def Realphone_totle(self, value):
         self.progress_bar.setMaximum(value)
         self.progress_bar.setValue(0)
